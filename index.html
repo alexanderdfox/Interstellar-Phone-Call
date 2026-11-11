@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Seeded Pi-Random Lotto Frequencies Oscilloscope</title>
+  <title>Multi-Color Sine Wave & Phase Oscilloscope</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 700px;
+      max-width: 800px;
       margin: 30px auto;
       padding: 20px;
       text-align: center;
@@ -34,16 +34,16 @@
     }
     canvas {
       width: 100%;
-      height: 250px;
+      height: 300px;
       background-color: #050b14;
-      border: 2px solid #00ffcc;
+      border: 2px solid #2c3e50;
       border-radius: 6px;
       margin-top: 16px;
     }
     .freq-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
+      gap: 12px;
       margin: 16px 0;
     }
     .freq-box {
@@ -51,8 +51,43 @@
       padding: 12px;
       border-radius: 6px;
       font-family: monospace;
-      color: #00ffcc;
-      font-weight: bold;
+      text-align: left;
+      border-left: 6px solid #ccc;
+    }
+    .freq-box label {
+      display: block;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+    .freq-box input[type="range"] {
+      width: 100%;
+      margin-top: 4px;
+      cursor: pointer;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 12px;
+      font-size: 0.85rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 16px;
     }
     button {
       background-color: #00ffcc;
@@ -63,11 +98,17 @@
       font-weight: bold;
       border-radius: 6px;
       cursor: pointer;
-      margin-top: 12px;
       transition: background 0.2s;
     }
     button:hover {
       background-color: #00cca3;
+    }
+    button.secondary {
+      background-color: #334155;
+      color: #cbd5e1;
+    }
+    button.secondary:hover {
+      background-color: #475569;
     }
   </style>
 </head>
@@ -79,23 +120,24 @@
       10314424798490535546171949056
     </div>
 
-    <h2>Dynamically Generated Frequencies (Pairs × 100 Hz)</h2>
-    <div class="freq-grid" id="freqGrid">
-      <!-- Populated dynamically -->
-    </div>
+    <h2>Individual Frequencies, Phases & Colors</h2>
+    <div class="freq-grid" id="freqGrid"></div>
 
-    <canvas id="scopeCanvas"></canvas>
+    <canvas id="scopeCanvas" width="800" height="300"></canvas>
 
-    <div>
-      <button id="toggleBtn" onclick="toggleAudio()">Play Generated Frequencies</button>
+    <div class="legend" id="legendContainer"></div>
+
+    <div class="controls">
+      <button id="toggleBtn" onclick="toggleAudio()">Play Combined Audio</button>
+      <button class="secondary" onclick="regenerateAll()">New Draw & Phases</button>
     </div>
   </div>
 
   <script>
     const baseNumberStr = "10314424798490535546171949056";
     const baseSeed = Number(BigInt(baseNumberStr) % 2147483647n);
+    const colors = ['#ff5252', '#ffeb3b', '#00e676', '#00bcd4', '#7c4dff', '#ff4081'];
 
-    // Linear Congruential Generator (LCG) PRNG using seed + Pi factor
     function seededRandom(step) {
       const piFactor = Math.PI * 10000;
       let state = (baseSeed + step * piFactor) % 2147483647;
@@ -103,17 +145,17 @@
       return (state - 1) / 2147483646;
     }
 
-    let currentFreqs = [];
+    let currentData = [];
     let audioCtx, analyser, isPlaying = false, oscillators = [];
 
-    function generateNewFrequencies() {
+    function generateData() {
       const maxIndex = baseNumberStr.length - 2;
       const selectedPairs = [];
       const usedIndices = new Set();
       
       let step = 0;
       while (selectedPairs.length < 6) {
-        const randVal = seededRandom(step + Math.random() * 1000); // mixes seed & Pi
+        const randVal = seededRandom(step + Math.random() * 1000);
         const index = Math.floor(randVal * (maxIndex + 1));
         
         if (!usedIndices.has(index)) {
@@ -124,18 +166,65 @@
         step++;
       }
 
-      // Convert pairs to frequencies (Pair * 100 Hz)
-      currentFreqs = selectedPairs.map(p => parseInt(p, 10) * 100);
+      currentData = selectedPairs.map((p, idx) => {
+        const freq = parseInt(p, 10) * 100;
+        const phase = Math.floor(seededRandom(idx + 50) * 360);
+        return { freq, phase, color: colors[idx] };
+      });
 
-      // Update UI grid
+      renderGrid();
+      renderLegend();
+      drawStaticScope();
+    }
+
+    function renderGrid() {
       const grid = document.getElementById('freqGrid');
       grid.innerHTML = '';
-      currentFreqs.forEach(f => {
+      currentData.forEach((item, index) => {
         const box = document.createElement('div');
         box.className = 'freq-box';
-        box.textContent = f.toLocaleString() + " Hz";
+        box.style.borderColor = item.color;
+        box.innerHTML = `
+          <div style="color: ${item.color}">${item.freq.toLocaleString()} Hz</div>
+          <label>Phase: <span id="val_${index}">${item.phase}</span>°</label>
+          <input type="range" id="slider_${index}" min="0" max="360" value="${item.phase}" 
+                 oninput="updatePhase(${index}, this.value)">
+        `;
         grid.appendChild(box);
       });
+    }
+
+    function renderLegend() {
+      const container = document.getElementById('legendContainer');
+      container.innerHTML = '<div class="legend-item"><div class="legend-color" style="background:#ffffff"></div><span><b>Composite (Sum)</b></span></div>';
+      currentData.forEach((item, index) => {
+        container.innerHTML += `
+          <div class="legend-item">
+            <div class="legend-color" style="background:${item.color}"></div>
+            <span>Wave ${index+1} (${item.freq}Hz)</span>
+          </div>
+        `;
+      });
+    }
+
+    function updatePhase(index, value) {
+      const deg = parseInt(value, 10);
+      currentData[index].phase = deg;
+      document.getElementById(`val_${index}`).textContent = deg;
+
+      if (isPlaying && audioCtx) {
+        const rad = (deg * Math.PI) / 180;
+        const real = new Float32Array([0, Math.sin(rad)]);
+        const imag = new Float32Array([0, Math.cos(rad)]);
+        const wave = audioCtx.createPeriodicWave(real, imag);
+        oscillators[index].setPeriodicWave(wave);
+      }
+      if (!isPlaying) drawStaticScope();
+    }
+
+    function regenerateAll() {
+      if (isPlaying) toggleAudio();
+      generateData();
     }
 
     function toggleAudio() {
@@ -149,72 +238,165 @@
         oscillators.forEach(osc => osc.stop());
         oscillators = [];
         isPlaying = false;
-        document.getElementById('toggleBtn').textContent = "Play Generated Frequencies";
+        document.getElementById('toggleBtn').textContent = "Play Combined Audio";
       } else {
         if (audioCtx.state === 'suspended') audioCtx.resume();
-        
-        // Generate new set on play
-        generateNewFrequencies();
 
         const masterGain = audioCtx.createGain();
-        masterGain.gain.value = 0.12; // Master volume balance
+        masterGain.gain.value = 0.10;
 
-        currentFreqs.forEach(freq => {
+        oscillators = currentData.map(item => {
           const osc = audioCtx.createOscillator();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+          osc.frequency.setValueAtTime(item.freq, audioCtx.currentTime);
+
+          const rad = (item.phase * Math.PI) / 180;
+          const real = new Float32Array([0, Math.sin(rad)]);
+          const imag = new Float32Array([0, Math.cos(rad)]);
+          const wave = audioCtx.createPeriodicWave(real, imag);
+          
+          osc.setPeriodicWave(wave);
           osc.connect(masterGain);
           osc.start();
-          oscillators.push(osc);
+          return osc;
         });
 
         masterGain.connect(analyser);
         analyser.connect(audioCtx.destination);
         isPlaying = true;
-        document.getElementById('toggleBtn').textContent = "Stop Audio & Redraw";
-        drawScope();
+        document.getElementById('toggleBtn').textContent = "Stop Audio";
+        requestAnimationFrame(drawLiveScope);
       }
     }
 
-    function drawScope() {
+    // Mathematical preview render when stopped or live rendering when playing
+    function drawStaticScope() {
       const canvas = document.getElementById('scopeCanvas');
       const ctx = canvas.getContext('2d');
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
+      const width = canvas.width;
+      const height = canvas.height;
 
-      function render() {
-        if (!isPlaying) return;
-        requestAnimationFrame(render);
-        analyser.getByteTimeDomainData(dataArray);
+      ctx.fillStyle = '#050b14';
+      ctx.fillRect(0, 0, width, height);
 
-        ctx.fillStyle = '#050b14';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#00ffcc';
-        ctx.beginPath();
-
-        const sliceWidth = canvas.width * 1.0 / bufferLength;
-        let x = 0;
-
-        for (let i = 0; i < bufferLength; i++) {
-          const v = dataArray[i] / 128.0;
-          const y = v * canvas.height / 2;
-
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-
-          x += sliceWidth;
-        }
-
-        ctx.lineTo(canvas.width, canvas.height / 2);
-        ctx.stroke();
+      // Draw grid lines
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < width; x += 50) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+      }
+      for (let y = 0; y < height; y += 50) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
       }
 
-      render();
+      // Base reference period matching lowest common window
+      const baseLen = width;
+      const individualWaves = currentData.map(item => {
+        const points = new Float32Array(baseLen);
+        const rad = (item.phase * Math.PI) / 180;
+        // Use lowest frequency as baseline scale factor for visual layout
+        const scaleFreq = item.freq / 300; 
+        for (let x = 0; x < baseLen; x++) {
+          const t = (x / baseLen) * Math.PI * 4 * Math.max(1, scaleFreq / 10);
+          points[x] = Math.sin(t + rad);
+        }
+        return points;
+      });
+
+      // Draw individual waves
+      currentData.forEach((item, idx) => {
+        ctx.strokeStyle = item.color;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        const pts = individualWaves[idx];
+        for (let x = 0; x < baseLen; x++) {
+          const y = (height / 2) - (pts[x] * (height / 8));
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
+
+      // Draw composite sum wave in white
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.globalAlpha = 1.0;
+      ctx.beginPath();
+      for (let x = 0; x < baseLen; x++) {
+        let sum = 0;
+        for (let idx = 0; idx < currentData.length; idx++) {
+          sum += individualWaves[idx][x];
+        }
+        const normalizedSum = sum / currentData.length;
+        const y = (height / 2) - (normalizedSum * (height / 3));
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
     }
 
-    // Initial load view generation
-    generateNewFrequencies();
+    function drawLiveScope() {
+      if (!isPlaying) return;
+      requestAnimationFrame(drawLiveScope);
+
+      const canvas = document.getElementById('scopeCanvas');
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      analyser.getByteTimeDomainData(dataArray);
+
+      ctx.fillStyle = '#050b14';
+      ctx.fillRect(0, 0, width, height);
+
+      // Draw oscilloscope grid lines
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < width; x += 50) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+      }
+      for (let y = 0; y < height; y += 50) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+      }
+
+      // Draw individual simulated channels behind composite
+      const baseLen = width;
+      currentData.forEach((item, idx) => {
+        ctx.strokeStyle = item.color;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        const rad = (item.phase * Math.PI) / 180;
+        const scaleFreq = item.freq / 400;
+        for (let x = 0; x < baseLen; x++) {
+          const t = (x / baseLen) * Math.PI * 8 * Math.max(1, scaleFreq);
+          const val = Math.sin(t + rad);
+          const y = (height / 2) - (val * (height / 8));
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
+
+      // Draw live audio composite wave in white (summed output)
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.globalAlpha = 1.0;
+      ctx.beginPath();
+      const sliceWidth = width * 1.0 / bufferLength;
+      let x = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = v * height / 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        x += sliceWidth;
+      }
+      ctx.stroke();
+    }
+
+    generateData();
   </script>
 
 </body>
